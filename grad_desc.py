@@ -115,6 +115,21 @@ else:
 
 st.title("Demonstration of Gradient Descent")
 
+st.markdown('''Some data is shown below, together with the line of best fit for that data.
+There is a formula for finding that best fit line, but it can be more efficient to find 
+the line instead using the iterative procedure of *gradient descent*.
+
+Our goal is to find coefficients $t_0$, $t_1$
+so that the line $y = t_1 x + t_0$ fits the data as well as possible.  We start with the guess $y = 4$ and
+then gradually update the parameters.
+
+Choices:
+* The number of iterations to perform.
+* The *learning rate*, which controls how much the parameters change with each update.
+* The *batch size*, how many of the data points you want to consider in each step.  For stochastic
+gradient descent, use a batch size of 1.
+''')
+
 xmin = df["x"].min()
 xmax = df["x"].max()
 ymin = df["y"].min()
@@ -125,7 +140,7 @@ chart1 = draw_line(fit_coefs, [xmin, xmax])
 chart2 = alt.Chart(df).mark_circle().encode(
     x=alt.X("x",scale=alt.Scale(domain=[xmin, xmax])), 
     y=alt.Y("y",scale=alt.Scale(domain=[ymin, ymax])), 
-    color=alt.Color("color:N", scale=alt.Scale(domain=[0,1], range=["darkgrey","red"])),
+    color=alt.Color("color:N", legend=None, scale=alt.Scale(domain=[0,1], range=["darkgrey","red"])),
     )
 
 
@@ -137,7 +152,7 @@ fit_0, fit_1 = fit_coefs
 
 with st.sidebar:
     learn = st.slider("What learning rate?",min_value=0.0,max_value=0.2,step=0.002, value = init_alpha,
-                key="alpha", on_change = update)
+                key="alpha", on_change = update, format="%.3f")
 
     batch = st.slider("What batch size?",min_value=1,max_value=pts,step=1, value = init_batch,
                 key="batch", on_change = update)
@@ -153,9 +168,32 @@ t0, t1 = theta_arr[step]
 
 chart1b = draw_line((t0,t1), [xmin, xmax],color="black")
 
+c0, c1 = st.columns((7,5))
 
+with c0:
+    st.altair_chart(alt.layer(chart1,chart1b,chart2),use_container_width=True)
 
-st.altair_chart(alt.layer(chart1,chart1b,chart2).properties(width=600,height=400))
+df_theta = pd.DataFrame(theta_arr, columns=["t0","t1"])
+
+t0_min, t1_min = df_theta.min(axis=0) - 2
+t0_max, t1_max = df_theta.max(axis=0) + 2
+
+chart_theta = alt.Chart(df_theta.loc[:step]).mark_circle().encode(
+    x=alt.X("t0",scale=alt.Scale(domain=[t0_min, t0_max])), 
+    y=alt.Y("t1",scale=alt.Scale(domain=[t1_min, t1_max])), 
+)
+
+chart_fit = alt.Chart(pd.DataFrame({"t0":[fit_0],"t1":[fit_1]})).mark_point(
+    color="red",
+    shape="diamond",
+    size=100,
+    ).encode(
+        x = "t0",
+        y = "t1",
+    )
+
+with c1:
+    st.altair_chart(chart_theta + chart_fit,use_container_width=True)
 
 st.button("Get new data",on_click=clear_data)
 
@@ -167,5 +205,8 @@ st.markdown(
 
 st.markdown(f"Our current guess for the line is given by {get_latex_for_line(t1, t0)}.  (Shown in black.)")
 
+st.write('''The next chart shows the estimated coefficients so far (in blue) and the 
+best-fit coefficients (in red).
+''')
 
 

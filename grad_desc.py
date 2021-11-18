@@ -205,7 +205,7 @@ st.markdown(
 
 st.markdown(f"Our current guess for the line is given by {get_latex_for_line(t1, t0)}.  (Shown in black.)")
 
-st.write('''The next chart shows the estimated coefficients so far (in blue) and the 
+st.write('''The chart on the right shows the estimated coefficients so far (in blue) and the 
 best-fit coefficients (in red).
 ''')
 

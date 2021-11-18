@@ -3,25 +3,31 @@ import streamlit as st
 import altair as alt
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LinearRegression
 
-st.markdown('''To do:
-* Batch size
-* Divide the coloring step from the line update step
-* Replace the grey line with the line of best fit (scikit-learn)
-''')
+# st.markdown('''To do:
+# * Batch size
+# * Divide the coloring step from the line update step
+# * Replace the grey line with the line of best fit (scikit-learn)
+# * Image for contour lines?
+# ''')
 
 rng = np.random.default_rng()
 
 pts = 20
 
-max_updates = 200
+max_updates = 2000
 
 init_alpha = 0.01
 
+init_batch = 1
+
+init_theta = (4,0)
+
 # coefs = [a,b,c] where our line is ax + by + c = 0
 def line_fn(coefs):
-    a, b, c = coefs
-    return lambda x: (-c - a * x) / b
+    t0, t1 = coefs
+    return lambda x: t0 + t1*x
 
 def draw_line(coefs, dom, color="lightgrey"):
     f = line_fn(coefs)
@@ -37,21 +43,30 @@ def draw_line(coefs, dom, color="lightgrey"):
     )
     return c
 
-def update_theta(theta,pt,alpha):
+def update_theta(theta,batch,alpha):
     t0, t1 = theta
-    x, y = pt
-    val = 2*(t0 + t1*x - y)/pts
-    return (t0 - alpha*val, t1 - alpha*val*x)
+    val = 2*(t0 + t1*batch["x"] - batch["y"])/pts
+    return (t0 - (alpha*val).sum(), t1 - (alpha*val*batch["x"]).sum())
 
-# Remove the repetition from this and the below code
-def update_alpha():
-    theta_arr = [(4,0)]
-
+def make_theta_array(df, pt_idx, alpha, batch):
+    theta_arr = [init_theta]
     for i in range(max_updates):
-        theta_arr.append(update_theta(theta_arr[i],df.loc[pt_idx[i],["x","y"]],
-            st.session_state["alpha"]))
+        theta_arr.append(
+                update_theta(theta_arr[i],df.loc[pt_idx[i*batch:(i+1)*batch],["x","y"]], alpha)
+            )
+    return theta_arr
 
-    st.session_state["theta_arr"] = theta_arr
+if "batch" in st.session_state:
+    batch = st.session_state["batch"]
+else:
+    batch = init_batch
+
+def update():
+    theta_arr = [(4,0)]
+    (_, df, pt_idx) = st.session_state["data"]
+    alpha = st.session_state["alpha"]
+    batch = st.session_state["batch"]
+    st.session_state["theta_arr"] = make_theta_array(df, pt_idx, alpha, batch)
 
 def get_latex_for_line(m,b):
     return f'''$y = {round(m,2)}x {"+" if b >= 0 else ""} {round(b,2)}$'''
@@ -65,18 +80,25 @@ def clear_data():
 
 
 if "data" in st.session_state:
-    (coefs, df, pt_idx) = st.session_state["data"]
+    (fit_coefs, df, pt_idx) = st.session_state["data"]
 else:
-    coefs = 30 * rng.random(size=(3)) - 20
+    coefs = 30 * rng.random(size=(2)) - 20
     df = pd.DataFrame(index=range(pts), columns=["x", "y", "color"])
     df["x"] = rng.normal(size=pts, loc=0, scale=3)
     true_f = line_fn(coefs)
-    df["y"] = true_f(df["x"]) + rng.normal(size=pts, loc=0, scale=5)
+    df["y"] = true_f(df["x"]) + rng.normal(size=pts, loc=0, scale=7)
     df["color"] = 0
     
-    pt_idx = np.concatenate([rng.permutation(range(pts)) for i in range(max_updates//pts + 1)])
+    reg = LinearRegression()
+    reg.fit(df[["x"]], df[["y"]])
+    fit_1 = reg.coef_[0][0]
+    fit_0 = reg.intercept_[0]
 
-    st.session_state["data"] = (coefs, df, pt_idx)
+    fit_coefs = (fit_0, fit_1)
+
+    pt_idx = np.concatenate([rng.permutation(range(pts)) for i in range((max_updates*batch)//pts + 1)])
+
+    st.session_state["data"] = (fit_coefs, df, pt_idx)
     
 
 if "theta_arr" in st.session_state:
@@ -85,7 +107,8 @@ else:
     theta_arr = [(4,0)]
 
     for i in range(max_updates):
-        theta_arr.append(update_theta(theta_arr[i],df.loc[pt_idx[i],["x","y"]], init_alpha))
+        theta_arr.append(update_theta(theta_arr[i],df.loc[pt_idx[i*batch:(i+1)*batch],
+                ["x","y"]], init_alpha))
 
     st.session_state["theta_arr"] = theta_arr
 
@@ -97,9 +120,7 @@ xmax = df["x"].max()
 ymin = df["y"].min()
 ymax = df["y"].max()
 
-a, b, c = coefs
-
-chart1 = draw_line(coefs, [xmin, xmax])
+chart1 = draw_line(fit_coefs, [xmin, xmax])
 
 chart2 = alt.Chart(df).mark_circle().encode(
     x=alt.X("x",scale=alt.Scale(domain=[xmin, xmax])), 
@@ -107,29 +128,44 @@ chart2 = alt.Chart(df).mark_circle().encode(
     color=alt.Color("color:N", scale=alt.Scale(domain=[0,1], range=["darkgrey","red"])),
     )
 
-learn = st.slider("What learning rate?",min_value=0.0,max_value=0.2,step=0.002, value = init_alpha,
-            key="alpha", on_change = update_alpha)
+
+
+
+
+fit_0, fit_1 = fit_coefs
+
+
+with st.sidebar:
+    learn = st.slider("What learning rate?",min_value=0.0,max_value=0.2,step=0.002, value = init_alpha,
+                key="alpha", on_change = update)
+
+    batch = st.slider("What batch size?",min_value=1,max_value=pts,step=1, value = init_batch,
+                key="batch", on_change = update)
 
 step = st.slider("How many updates do you want to perform?",min_value=0,max_value=max_updates,step=1,
                 key = "step_slider")
 
 df["color"] = 0
 
-df.loc[pt_idx[step],"color"] = 1
+df.loc[pt_idx[step*batch:(step+1)*batch],"color"] = 1
 
 t0, t1 = theta_arr[step]
 
+chart1b = draw_line((t0,t1), [xmin, xmax],color="black")
+
+
+
+st.altair_chart(alt.layer(chart1,chart1b,chart2).properties(width=600,height=400))
+
+st.button("Get new data",on_click=clear_data)
+
 st.markdown(
-    f"""The true line is given by the equation 
-        {get_latex_for_line(-a/b, -c/b)}.  (Shown in grey.)
+    f"""The line of best fit is given by the equation 
+        {get_latex_for_line(fit_1, fit_0)}.  (Shown in grey.)
                 """
 )
 
 st.markdown(f"Our current guess for the line is given by {get_latex_for_line(t1, t0)}.  (Shown in black.)")
 
-chart1b = draw_line((-t1,1,-t0), [xmin, xmax],color="black")
-
-st.altair_chart(alt.layer(chart1,chart1b,chart2))
 
 
-st.button("Get new data",on_click=clear_data)

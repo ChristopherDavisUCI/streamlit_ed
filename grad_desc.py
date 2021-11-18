@@ -73,7 +73,7 @@ def get_latex_for_line(m,b):
 
 def clear_data():
     del st.session_state["data"]
-    del st.session_state["step_slider"]
+    st.session_state["step_slider"] = 0
     del st.session_state["theta_arr"]
 
 
@@ -151,6 +151,8 @@ fit_0, fit_1 = fit_coefs
 
 
 with st.sidebar:
+    st.write("Here you can adjust some parameters for the gradient descent algorithm.")
+
     learn = st.slider("What learning rate?",min_value=0.0,max_value=0.2,step=0.002, value = init_alpha,
                 key="alpha", on_change = update, format="%.3f")
 
